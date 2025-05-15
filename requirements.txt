@@ -3,3 +3,9 @@ pymupdf>=1.22.0
 pandas>=1.5.0
 bcrypt
 dotenv
+supabase
+openai
+json
+PyPDF2
+PyPDFForm
+tempfile
