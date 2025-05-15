@@ -5,7 +5,6 @@ bcrypt
 dotenv
 supabase
 openai
-json
 PyPDF2
 PyPDFForm
 tempfile
