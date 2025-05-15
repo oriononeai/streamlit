@@ -7,4 +7,3 @@ supabase
 openai
 PyPDF2
 PyPDFForm
-tempfile
