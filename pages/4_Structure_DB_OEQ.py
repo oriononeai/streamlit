@@ -7,9 +7,24 @@ import re # For safe_extract_json
 from supabase import create_client, Client
 import time # For potential delays
 
+# --- Environment Selection ---
+ENV_OPTIONS = ["QA", "PROD"]
+# Place selectbox in sidebar
+selected_env = st.sidebar.selectbox("Select Environment", ENV_OPTIONS, index=0, key="structure_env_select")
+
 # --- Constants ---
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_API_KEY = os.getenv("SUPABASE_API_KEY")
+# Conditional Supabase credentials based on selected_env
+if selected_env == "QA":
+    SUPABASE_URL = os.getenv("SUPABASE_URL")
+    SUPABASE_API_KEY = os.getenv("SUPABASE_API_KEY")
+elif selected_env == "PROD":
+    SUPABASE_URL = os.getenv("SUPABASEO1_URL")
+    SUPABASE_API_KEY = os.getenv("SUPABASEO1_API_KEY")
+else: # Default to QA
+    SUPABASE_URL = os.getenv("SUPABASE_URL")
+    SUPABASE_API_KEY = os.getenv("SUPABASE_API_KEY")
+    st.sidebar.warning(f"Unknown environment '{selected_env}'. Defaulting to QA.")
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 TARGET_TABLE = "pri_sci_paper"
 
@@ -20,8 +35,9 @@ try:
     if SUPABASE_URL and SUPABASE_API_KEY:
         supabase = create_client(SUPABASE_URL, SUPABASE_API_KEY)
         supabase_available = True
+        st.sidebar.success(f"Supabase connection for {selected_env} established.")
     else:
-        st.sidebar.warning("Supabase URL/Key missing. Cannot connect to DB.")
+        st.sidebar.warning(f"Supabase URL/Key missing for {selected_env}. Cannot connect to DB.")
 except Exception as e:
     st.sidebar.error(f"Supabase connection failed: {e}")
 
@@ -99,6 +115,7 @@ def fetch_oeq_questions(supabase_client: Client, paper_code: str) -> list[dict]:
                                   .select("paper, question_number, question, question_type, answer") \
                                   .eq("paper", paper_code) \
                                   .neq("question_type", "multiple_choice") \
+                                  .neq("question_type", "MCQ") \
                                   .execute()
         if response.data:
             # Filter out rows with missing essential data needed for structuring
@@ -123,7 +140,6 @@ def fetch_oeq_questions(supabase_client: Client, paper_code: str) -> list[dict]:
 AI_SYSTEM_PROMPT = """You are a science exam marking assistant.
 
 You will be provided with data for **a single question** retrieved from a database containing:
-# - The Question Number (No longer sent)
 - The Full Question Text
 - The current Question Type classification
 - The raw Model Answer text.
@@ -184,11 +200,7 @@ Model Answer: Humidity | Wind speed | Cloud cover | Amount of sunlight | Rainfal
 
 **Example Output (Your Response):**
 {
-#  "question_number": "3a", (No longer included)
-#  "full_question_text": "Name two other physical factors...", (No longer included)
-  "question_type": "fact_recall",
-#  "marks_allocated": null, (No longer included)
-  "model_answer": {
+    "model_answer": {
     "decision": [],
     "cause": [],
     "effect": [],
@@ -269,7 +281,7 @@ def main():
     st.title("Structure OEQ Answers in Database")
 
     if not supabase_available:
-        st.error("Supabase connection is not configured. Please set SUPABASE_URL and SUPABASE_API_KEY environment variables.")
+        st.error(f"Supabase connection to {selected_env} is not configured. Please set the required environment variables.")
         return
     if not openai_available:
         st.error("OpenAI client is not configured. Please set OPENAI_API_KEY environment variable.")

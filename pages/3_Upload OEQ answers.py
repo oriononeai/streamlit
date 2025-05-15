@@ -8,9 +8,24 @@ import json # Keep for potential JSON handling if needed, otherwise remove later
 # Removed asyncio
 from supabase import create_client, Client
 
+# --- Environment Selection ---
+ENV_OPTIONS = ["QA", "PROD"]
+# Place selectbox in sidebar for consistency if desired, or main area if not.
+# Assuming sidebar like the other file for now.
+selected_env = st.sidebar.selectbox("Select Environment", ENV_OPTIONS, index=0, key="oeq_env_select")
+
 # --- Supabase Initialization ---
-supabase_url = os.getenv("SUPABASE_URL")
-supabase_key = os.getenv("SUPABASE_API_KEY")
+if selected_env == "QA":
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_API_KEY")
+elif selected_env == "PROD":
+    supabase_url = os.getenv("SUPABASEO1_URL")
+    supabase_key = os.getenv("SUPABASEO1_API_KEY")
+else: # Default to QA
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_API_KEY")
+    st.sidebar.warning(f"Unknown environment '{selected_env}'. Defaulting to QA.")
+
 supabase: Client | None = None
 supabase_available = False
 
@@ -18,9 +33,9 @@ try:
     if supabase_url and supabase_key:
         supabase = create_client(supabase_url, supabase_key)
         supabase_available = True
-        st.sidebar.success("Supabase connection established.") # User feedback
+        st.sidebar.success(f"Supabase connection established for {selected_env}.") # User feedback
     else:
-        st.sidebar.warning("Supabase URL/Key missing. Cannot query/save questions.")
+        st.sidebar.warning(f"Supabase URL/Key missing for {selected_env}. Cannot query/save questions.")
 except Exception as e:
     st.sidebar.error(f"Supabase connection failed: {e}")
 # ---------------------------
