@@ -5,6 +5,7 @@ from io import BytesIO
 import base64
 from openai import OpenAI
 import os
+import re # Import re module for regex operations
 
 # Initialize OpenAI
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -29,7 +30,7 @@ def pdf_to_images(pdf_file, test_mode=False):
         buf = BytesIO()
         img.save(buf, format="PNG")
         img_bytes = buf.getvalue()
-        images.append((f"Q{i+1}", img_bytes))
+        images.append((f"{i+1}", img_bytes))
     return images
 
 # Send image to OpenAI and get markdown output
@@ -38,30 +39,75 @@ def get_markdown_from_image(image_bytes, question_label, pdf_filename):
     # Remove .pdf extension and any special characters from filename
     clean_filename = os.path.splitext(pdf_filename)[0].replace(" ", "_")
     prompt = f"""
-You are helping convert scanned exam papers into Markdown format.
+You are helping convert scanned exam papers into structured Markdown format with lightweight placeholders for HTML/JS input field injection.
+
+---
 
 ### 1. Image Handling
-- Do NOT OCR or describe any diagrams or illustrations.
-- Instead, insert an actual image reference like:
-`![Diagram of Cell X showing parts like nucleus and vacuole](media/{clean_filename}/{{question_label}}i.png)`
-- Use the PDF filename '{clean_filename}' as the folder name (e.g. media/{clean_filename}/).
-- If the question contains multiple diagrams, label them as `{{question_label}}i`, `{{question_label}}ii`, etc., based on order of appearance.
+- Do **NOT** OCR or describe any diagrams or illustrations.
+- Instead, insert an image reference like:
+  `![Diagram of Cell X showing parts like nucleus and vacuole](media/{clean_filename}/{{question_label}}i.png)`
+- Use the PDF filename '{clean_filename}' as the folder name (e.g., `media/{clean_filename}/`). The `{{question_label}}` in the image path refers to the current page number (e.g., "1", "2").
+- If a single question part on a page contains multiple diagrams, label them sequentially based on order of appearance on that page: `{{question_label}}i`, `{{question_label}}ii`, etc.
 
-### 2. Question Numbering
-- Carefully detect all question numbers, even if they are not explicitly labeled as "Q".
-- Prefix each question with a clear label in this format: `Q1.`, `Q2.`, `Q3.`, etc.
-- For sub-parts like (a), (b), format them as: `Q3(a).`, `Q3(b).`, etc.
-- Do NOT use markdown headers like `## Q1`. Just use plain inline text (e.g., `Q1.`, not `## Q1`).
-- If a question number is visible (e.g., "39.") at the top of the question or near the image, use it (e.g., `Q39.`).
-- Never skip a question number. Always include every question and sub-part.
+---
 
-### 3. Text Extraction
-- Only transcribe the question text *outside* the image or diagram.
-- Preserve all scientific formatting and phrasing as much as possible.
-- Maintain multiple-choice answer formatting (e.g., `1.`, `2.`, `3.`, `4.`).
+### 2. Question Numbering and Type Tagging
+- Carefully detect all question numbers and their sub-parts (e.g., (a), (b), (i), (ii)).
+- Prefix each question or sub-question accurately with its full identifier, followed by a type tag. Examples:
+  `Q1. #mcq`
+  `Q3(a). #oeq`
+  `Q12(b)(i). #draw`
+- Ensure the question number (e.g., 1, 3a, 12bi) is extracted precisely.
+- The tag `#mcq` means multiple choice, `#oeq` means open-ended, and `#draw` means drawing on canvas.
+- You must infer the correct type based on clues:
+  - If it has multiple-choice options (e.g., `1.`, `2.`, `A.`, `B.`) → use `#mcq`
+  - If it asks for an explanation, calculation, written description → use `#oeq`
+  - If it asks the student to draw, label a diagram, or plot on a graph → use `#draw`
+- Never skip or omit a question number or type tag.
+- Do **not** use markdown headers like `##` or `###` for questions.
 
-### 4. Table Formatting
-- If the question includes a table with grouped headers (e.g., "Process" over A/B and "Part" over X/Y), simplify the header into a flat single row:
+---
+
+### 3. Input Field Placeholder Insertion
+- Immediately below each question or sub-question that requires a distinct answer, insert a placeholder line for the input field.
+- **CRITICAL ATTRIBUTES**: All placeholders MUST use `paper_number` and `question_number` attributes. Do **NOT** use the `name` attribute.
+- The `paper_number` attribute in all placeholders MUST be exactly: `{clean_filename}`.
+- For the `question_number` attribute in the placeholder:
+    - Extract the unique identifier from the question label you have just written (e.g., "Q29(a)." or "Q5." or "Q12(b)(i).").
+    - From this identifier, take ONLY the alphanumeric characters. Remove "Q", ".", "(", ")".
+    - Example: If the question label is `Q29(a). #mcq`, the `question_number` attribute is "29a".
+    - Example: If the question label is `Q5. #oeq`, the `question_number` attribute is "5".
+    - Example: If the question label is `Q12(b)(i). #draw`, the `question_number` attribute is "12bi".
+    - The `question_number` attribute itself must NOT contain 'Q', '.', '(', ')', or the type tag (e.g. '#mcq').
+
+- Use the following lightweight placeholder formats. Pay close attention to the attributes `paper_number` and `question_number`.
+
+| Question Type | Tag     | Placeholder Format                                                                                         | Specific Instructions                                                                                                                                                                                             |
+|---------------|---------|------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|\\
+| Multiple Choice | `#mcq`  | `[input type=text paper_number={clean_filename} question_number={{Q_PART_ALPHANUM}} size=1]`             | `{{Q_PART_ALPHANUM}}` is the extracted alphanumeric question identifier (e.g., "29a", "1"). Insert only once per complete MCQ question. If an MCQ has multiple parts, place the input under the final part where the answer is expected. |
+| Open-Ended      | `#oeq`  | `[input type=textarea paper_number={clean_filename} question_number={{Q_PART_ALPHANUM}} rows={{X}}]`         | `{{Q_PART_ALPHANUM}}` is the extracted alphanumeric question identifier (e.g., "26b"). Insert for sub-questions (e.g., `Q2(a).`) that require a direct answer. Determine `rows` (X) from 2-5 based on context, marks, or likely answer length. Default to 3 rows if unsure. |
+| Drawing         | `#draw` | `[input type=canvas paper_number={clean_filename} question_number={{Q_PART_ALPHANUM}} rows=4]`               | `{{Q_PART_ALPHANUM}}` is the extracted alphanumeric question identifier (e.g., "27c"). Insert for sub-questions requiring a drawing. `rows` is fixed at 4.                                                      |
+
+- **Placement Rules**: An input placeholder MUST be inserted for:
+    - Every MCQ question (at the point where the single answer for it is expected).
+    - Every OEQ sub-question that requires a textual answer.
+    - Every DRAW sub-question that requires a drawing.
+- Do **not** insert placeholders under main questions (e.g. `Q2.`) if they only serve to introduce sub-questions that will get their own placeholders.
+- Never insert more than one input placeholder for the exact same question or sub-question part.
+
+---
+
+### 4. Text Extraction
+- Transcribe only visible question text outside diagrams.
+- Preserve scientific formatting, chemical equations, mathematical expressions, phrasing, and structure as accurately as possible.
+- Maintain multiple-choice option formatting (e.g., `1.`, `2.`, `3.`, `4.` or `A.`, `B.`, `C.`, `D.`) and their line breaks.
+
+---
+
+### 5. Table Formatting
+- If the question includes a table with grouped headers (e.g., "Process A/B"), simplify into a single-row format:
+
     ```
     |        | Process A       | Process B       | Part X        | Part Y     |
     |--------|------------------|------------------|----------------|------------|
@@ -70,15 +116,15 @@ You are helping convert scanned exam papers into Markdown format.
     | (3)    | pollination       | seed dispersal   | seed           | fruit      |
     | (4)    | pollination       | fertilization    | fruit          | seed       |
     ```
-- Do NOT attempt to merge or span cells.
-- Re-label compound headers clearly.
+- Do NOT attempt to merge or span cells in the markdown.
+- Re-label compound headers clearly if needed for simplicity, but preserve original meaning.
 - Use markdown table syntax (`|`, `---`) with aligned columns.
 
-### 5. Output Rules
-- Do NOT wrap the output in triple backticks like ```markdown.
-- Do NOT use markdown headers like `##`, `###`, etc.
-- Do NOT include explanations, notes, or commentary — just output clean, plain Markdown.
-- Keep spacing clean and minimal — no excessive line breaks or blank lines.
+### 6. Output Rules
+- Do NOT wrap the output in triple backticks like \`\`\`markdown.
+- Do NOT use markdown headers like `##`, `###`, etc., within the question content.
+- Do NOT include explanations, notes, or commentary about your process — just output clean, plain Markdown representing the exam paper content.
+- Keep spacing clean and minimal — no excessive line breaks or blank lines, except where necessary for readability (e.g., between questions).
 """
     response = client.chat.completions.create(
         model="gpt-4o",
@@ -118,14 +164,29 @@ def main():
             with st.spinner("Converting PDF pages to images..." + (" (Test Mode: First Page Only)" if test_mode else "")):
                 images = pdf_to_images(uploaded_pdf, test_mode)
 
-                all_markdown = ""
+                all_markdown_parts = []
                 for idx, (label, img_bytes) in enumerate(images):
-                    with st.spinner(f"Processing {label}..."):
+                    with st.spinner(f"Processing page {label} of {len(images)}..."):
                         md = get_markdown_from_image(img_bytes, label, uploaded_pdf.name)
-                        all_markdown += f"\n\n## {label}\n{md}"
+                        all_markdown_parts.append(md)
 
-                # Store the processed markdown in session state
-                st.session_state.processed_markdown = all_markdown
+                # Join all markdown parts initially
+                raw_markdown = "\n\n".join(all_markdown_parts)
+                
+                # Post-process to add headers for main questions
+                processed_lines = []
+                for line in raw_markdown.splitlines():
+                    # Regex to find main question lines like "Q1. #mcq", "Q23. #oeq"
+                    # It looks for Q, followed by digits, then a literal dot, then a space, then # and a tag.
+                    # It ensures no parentheses (like in Q1(a).) are present after the question number.
+                    match = re.match(r"^(Q\d+)\.\s+#\w+", line)
+                    if match:
+                        question_number_full = match.group(0) # e.g. "Q1. #mcq"
+                        question_number_part = match.group(1) # e.g. "Q1"
+                        processed_lines.append(f"## {question_number_part}")
+                    processed_lines.append(line)
+                
+                st.session_state.processed_markdown = "\n".join(processed_lines)
                 st.session_state.conversion_complete = True
                 st.success("Conversion complete!" + (" (Test Mode)" if test_mode else ""))
 
