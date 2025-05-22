@@ -9,6 +9,61 @@ if 'extracted_data' not in st.session_state:
 if 'input_fields_metadata' not in st.session_state:
     st.session_state.input_fields_metadata = []
 
+# --- Environment Selection ---
+ENV_OPTIONS = ["QA", "PROD"]
+# Place selectbox in sidebar
+selected_env = st.sidebar.selectbox("Select Environment", ENV_OPTIONS, index=0, key="structure_env_select")
+
+# --- Constants ---
+# Conditional Supabase credentials based on selected_env
+if selected_env == "QA":
+    SUPABASE_URL = os.getenv("SUPABASE_URL")
+    SUPABASE_API_KEY = os.getenv("SUPABASE_API_KEY")
+elif selected_env == "PROD":
+    SUPABASE_URL = os.getenv("SUPABASEO1_URL")
+    SUPABASE_API_KEY = os.getenv("SUPABASEO1_API_KEY")
+else: # Default to QA
+    SUPABASE_URL = os.getenv("SUPABASE_URL")
+    SUPABASE_API_KEY = os.getenv("SUPABASE_API_KEY")
+    st.sidebar.warning(f"Unknown environment '{selected_env}'. Defaulting to QA.")
+    
+TARGET_TABLE = "pri_sci_paper"
+
+# --- Initialize Supabase Client ---
+supabase: Client | None = None
+supabase_available = False
+try:
+    if SUPABASE_URL and SUPABASE_API_KEY:
+        supabase = create_client(SUPABASE_URL, SUPABASE_API_KEY)
+        supabase_available = True
+        st.sidebar.success(f"Supabase connection for {selected_env} established.")
+    else:
+        st.sidebar.warning(f"Supabase URL/Key missing for {selected_env}. Cannot connect to DB.")
+except Exception as e:
+    st.sidebar.error(f"Supabase connection failed: {e}")
+
+def fetch_answer_from_supabase(paper: str, question_number: str) -> str:
+    """
+    Fetches the answer from the Supabase table `pri_sci_paper` based on paper and question_number.
+    Returns the answer if found, otherwise returns an empty string.
+    """
+    try:
+        response = supabase.table("pri_sci_paper") \
+            .select("answer") \
+            .eq("paper", paper) \
+            .eq("question_number", question_number) \
+            .limit(1) \
+            .execute()
+
+        if response.data and len(response.data) > 0:
+            return response.data[0].get("answer", "")
+        else:
+            return ""
+    except Exception as e:
+        print(f"Error fetching answer: {e}")
+        return ""
+
+
 def parse_placeholder_attributes(placeholder_str):
     # Expects a string like "[input type=text question_number=1 ...]"
     # Regex ensures it starts with "[input ", has attributes, and ends with "]"
@@ -122,15 +177,18 @@ def build_ui_and_collect_metadata_revamped(md_content, md_file_dir, paper_no):
             
             # Provide a label for the input widget for clarity
             input_label = f"{q_num_attr}:"
+            
+            # Fetch existing answer from Supabase
+            existing_answer = fetch_answer_from_supabase(paper_no, q_num_attr)
 
             if placeholder_type_from_attr == "text":
-                st.text_input(input_label, key=widget_key, label_visibility="visible")
+                st.text_input(input_label, key=widget_key, value=existing_answer, label_visibility="visible")
             elif placeholder_type_from_attr == "textarea":
                 rows = int(attrs.get('rows', 3)) # Default to 3 rows
                 # Ensure minimum rows for height calculation if multiplier is 25
                 # 68/25 = 2.72, so effectively need at least 3 rows
                 actual_rows_for_height = max(3, rows) 
-                st.text_area(input_label, key=widget_key, height=actual_rows_for_height * 25, label_visibility="visible")
+                st.text_area(input_label, key=widget_key, height=actual_rows_for_height * 25, value=existing_answer, label_visibility="visible")
             elif placeholder_type_from_attr == "canvas": # For canvas, we show original image if src, then textarea
                 if 'src' in attrs:
                     img_src_path = attrs['src']
@@ -148,7 +206,7 @@ def build_ui_and_collect_metadata_revamped(md_content, md_file_dir, paper_no):
                 rows = int(attrs.get('rows', 4)) # Default to 4 rows for canvas's textarea
                 # Ensure minimum rows for height calculation
                 actual_rows_for_height = max(3, rows) # Canvas text area also needs min 3 rows based on 68px/25px
-                st.text_area(f"{q_num_attr}: (drawing/description)", key=widget_key, height=actual_rows_for_height * 25, label_visibility="visible")
+                st.text_area(f"{q_num_attr}: (drawing/description)", key=widget_key, height=actual_rows_for_height * 25, value=existing_answer, label_visibility="visible")
             else:
                 # If unknown, render the original placeholder line as Markdown text for visibility
                 st.markdown(f"**Unknown placeholder type found:** `{line_text}`")
