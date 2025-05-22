@@ -159,7 +159,7 @@ def main():
                     "question": "",  # Placeholder for the question text
                     "answer": question.get("answer", ""),
                     "marks": 2,
-                    "question_type": "MCQ"
+                    "question_type": "multiple_choice"
                 }
                 data.append(row)
             df = pd.DataFrame(data)
