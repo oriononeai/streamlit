@@ -97,16 +97,16 @@ def build_ui_and_collect_metadata_revamped(md_content, md_file_dir, paper_no):
                 is_placeholder_line = True
 
         if is_placeholder_line:
-            question_text_for_df = ""
+            question_for_df = ""
             if current_md_block_lines_for_processing:
-                question_text_for_df = "\n".join(current_md_block_lines_for_processing)
+                question_for_df = "\n".join(current_md_block_lines_for_processing)
                 render_markdown_with_st_image(current_md_block_lines_for_processing, md_file_dir)
                 current_md_block_lines_for_processing = [] 
 
             # 2. Process and render the placeholder as a Streamlit widget
             q_num_attr = attrs['question_number']
             placeholder_type_from_attr = attrs.get('type', 'text')
-            marks_for_df = extract_marks(question_text_for_df)
+            marks_for_df = extract_marks(question_for_df)
             widget_key = f"answer_{q_num_attr}_{line_idx}"
 
             # Store metadata for later retrieval
@@ -114,7 +114,7 @@ def build_ui_and_collect_metadata_revamped(md_content, md_file_dir, paper_no):
                 'widget_key': widget_key,
                 'paper_no': paper_no,
                 'question_number_df': q_num_attr, 
-                'question_text_df': question_text_for_df,
+                'question_df': question_for_df,
                 'marks_df': marks_for_df,
                 'question_type_df': "",
                 'attrs': attrs
@@ -189,29 +189,29 @@ def main():
                 answer = st.session_state.get(field_meta['widget_key'], "")
                 level = field_meta['paper_no'][:2] if field_meta['paper_no'] else None
                 
-                raw_question_text = field_meta['question_text_df']
+                raw_question = field_meta['question_df']
                 cleaned_lines = []
-                for line in raw_question_text.splitlines():
+                for line in raw_question.splitlines():
                     # 1. Remove header lines like '## Qxx'
                     if re.match(r"^##\s*Q\d+", line.strip()):
                         continue # Skip this line
                     # 2. Remove '#tag' from question lines
                     cleaned_line = re.sub(r'\s*#\w+', '', line)
                     cleaned_lines.append(cleaned_line)
-                cleaned_question_text = "\n".join(cleaned_lines).strip() # .strip() to remove leading/trailing newlines from overall block
+                cleaned_question = "\n".join(cleaned_lines).strip() # .strip() to remove leading/trailing newlines from overall block
 
                 data_for_df.append({
                     "level": level,
                     "paper": field_meta['paper_no'],
                     "question_number": field_meta['question_number_df'],
-                    "question_text": cleaned_question_text, # Use cleaned text 
+                    "question": cleaned_question, # Use cleaned text 
                     "answer": answer,
                     "marks": field_meta['marks_df'],
                     "question_type": field_meta['question_type_df']
                 })
             if data_for_df:
                 # Define column order for consistency
-                column_order = ["level", "paper", "question_number", "question_text", "answer", "marks", "question_type"]
+                column_order = ["level", "paper", "question_number", "question", "answer", "marks", "question_type"]
                 df = pd.DataFrame(data_for_df)
                 # Reorder columns if not all columns are present (e.g. if some are None like marks initially)
                 # This ensures that if a column is all None, it still appears if specified in column_order
