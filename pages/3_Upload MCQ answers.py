@@ -163,6 +163,7 @@ def main():
                 }
                 data.append(row)
             df = pd.DataFrame(data)
+            st.session_state.extracted_data = df
             st.write("Extracted Data:")
             st.dataframe(df)
 
