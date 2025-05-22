@@ -111,6 +111,7 @@ def fetch_oeq_questions(supabase_client: Client, paper_code: str) -> list[dict]:
         return []
     try:
         # Select necessary fields, filter by paper and exclude MCQ
+        st.write(f"paper code is {paper_code}")
         response = supabase_client.table(TARGET_TABLE) \
                                   .select("paper, question_number, question, question_type, answer") \
                                   .eq("paper", paper_code) \
@@ -129,7 +130,7 @@ def fetch_oeq_questions(supabase_client: Client, paper_code: str) -> list[dict]:
                  st.warning(f"Fetched {count_total} non-MCQ rows, but {count_total - count_valid} rows are missing 'question' or 'answer' text and will be skipped.")
             return valid_rows
         else:
-            st.info(f"No non-MCQ questions found for paper '{paper_code}' or an error occurred.")
+            st.info(f"No non-multiple choice questions found for paper '{paper_code}' or an error occurred.")
             # st.write(response) # Optional: for debugging
             return []
     except Exception as e:
