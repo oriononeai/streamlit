@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import re
 import os
+from supabase import create_client, Client
 
 # Initialize session state
 if 'extracted_data' not in st.session_state:
