@@ -52,42 +52,42 @@ You are helping convert scanned exam papers into structured Markdown format with
 
 ---
 
-### 2. Question Numbering and Type Tagging
+### 2. Question Numbering (NO Type Tags)
 - Carefully detect all question numbers and their sub-parts (e.g., (a), (b), (i), (ii)).
-- Prefix each question or sub-question accurately with its full identifier, followed by a type tag. Examples:
-  `Q1. #mcq`
-  `Q3(a). #oeq`
-  `Q12(b)(i). #draw`
+- Write each question or sub-question with just its identifier, NO type tags. Examples:
+  `Q1.`
+  `Q3(a).`
+  `Q12(b)(i).`
 - Ensure the question number (e.g., 1, 3a, 12bi) is extracted precisely.
-- The tag `#mcq` means multiple choice, `#oeq` means open-ended, and `#draw` means drawing on canvas.
-- You must infer the correct type based on clues:
-  - If it has multiple-choice options (e.g., `1.`, `2.`, `A.`, `B.`) → use `#mcq`
-  - If it asks for an explanation, calculation, written description → use `#oeq`
-  - If it asks the student to draw, label a diagram, or plot on a graph → use `#draw`
-- Never skip or omit a question number or type tag.
+- You must determine the question type based on clues, but do NOT append it to the question text:
+  - If it has multiple-choice options (e.g., `1.`, `2.`, `A.`, `B.`) → type is `mcq`
+  - If it asks for an explanation, calculation, written description → type is `oeq`
+  - If it asks the student to draw, label a diagram, or plot on a graph → type is `draw`
+- Never skip or omit a question number.
 - Do **not** use markdown headers like `##` or `###` for questions.
 
 ---
 
 ### 3. Input Field Placeholder Insertion
 - Immediately below each question or sub-question that requires a distinct answer, insert a placeholder line for the input field.
-- **CRITICAL ATTRIBUTES**: All placeholders MUST use `paper_number` and `question_number` attributes. Do **NOT** use the `name` attribute.
+- **CRITICAL ATTRIBUTES**: All placeholders MUST use `paper_number`, `question_number`, and `question_type` attributes. Do **NOT** use the `name` attribute.
 - The `paper_number` attribute in all placeholders MUST be exactly: `{clean_filename}`.
 - For the `question_number` attribute in the placeholder:
     - Extract the unique identifier from the question label you have just written (e.g., "Q29(a)." or "Q5." or "Q12(b)(i).").
     - From this identifier, take ONLY the alphanumeric characters. Remove "Q", ".", "(", ")".
-    - Example: If the question label is `Q29(a). #mcq`, the `question_number` attribute is "29a".
-    - Example: If the question label is `Q5. #oeq`, the `question_number` attribute is "5".
-    - Example: If the question label is `Q12(b)(i). #draw`, the `question_number` attribute is "12bi".
-    - The `question_number` attribute itself must NOT contain 'Q', '.', '(', ')', or the type tag (e.g. '#mcq').
+    - Example: If the question label is `Q29(a).`, the `question_number` attribute is "29a".
+    - Example: If the question label is `Q5.`, the `question_number` attribute is "5".
+    - Example: If the question label is `Q12(b)(i).`, the `question_number` attribute is "12bi".
+    - The `question_number` attribute itself must NOT contain 'Q', '.', '(', ')'.
+- For the `question_type` attribute, use one of: `mcq`, `oeq`, or `draw` (without the # symbol).
 
-- Use the following lightweight placeholder formats. Pay close attention to the attributes `paper_number` and `question_number`.
+- Use the following lightweight placeholder formats. Pay close attention to the attributes `paper_number`, `question_number`, and `question_type`.
 
-| Question Type | Tag     | Placeholder Format                                                                                         | Specific Instructions                                                                                                                                                                                             |
-|---------------|---------|------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|\\
-| Multiple Choice | `#mcq`  | `[input type=text paper_number={clean_filename} question_number={{Q_PART_ALPHANUM}} size=1]`             | `{{Q_PART_ALPHANUM}}` is the extracted alphanumeric question identifier (e.g., "29a", "1"). Insert only once per complete MCQ question. If an MCQ has multiple parts, place the input under the final part where the answer is expected. |
-| Open-Ended      | `#oeq`  | `[input type=textarea paper_number={clean_filename} question_number={{Q_PART_ALPHANUM}} rows={{X}}]`         | `{{Q_PART_ALPHANUM}}` is the extracted alphanumeric question identifier (e.g., "26b"). Insert for sub-questions (e.g., `Q2(a).`) that require a direct answer. Determine `rows` (X) from 2-5 based on context, marks, or likely answer length. Default to 3 rows if unsure. |
-| Drawing         | `#draw` | `[input type=canvas paper_number={clean_filename} question_number={{Q_PART_ALPHANUM}} rows=4]`               | `{{Q_PART_ALPHANUM}}` is the extracted alphanumeric question identifier (e.g., "27c"). Insert for sub-questions requiring a drawing. `rows` is fixed at 4.                                                      |
+| Question Type | Type Value | Placeholder Format                                                                                         | Specific Instructions                                                                                                                                                                                             |
+|---------------|------------|-----------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Multiple Choice | `mcq`     | `[input type=text paper_number={clean_filename} question_number={{Q_PART_ALPHANUM}} question_type=mcq size=1]`             | `{{Q_PART_ALPHANUM}}` is the extracted alphanumeric question identifier (e.g., "29a", "1"). Insert only once per complete MCQ question. If an MCQ has multiple parts, place the input under the final part where the answer is expected. |
+| Open-Ended      | `oeq`     | `[input type=textarea paper_number={clean_filename} question_number={{Q_PART_ALPHANUM}} question_type=oeq rows={{X}}]`         | `{{Q_PART_ALPHANUM}}` is the extracted alphanumeric question identifier (e.g., "26b"). Insert for sub-questions (e.g., `Q2(a).`) that require a direct answer. Determine `rows` (X) from 2-5 based on context, marks, or likely answer length. Default to 3 rows if unsure. |
+| Drawing         | `draw`    | `[input type=canvas paper_number={clean_filename} question_number={{Q_PART_ALPHANUM}} question_type=draw rows=4]`               | `{{Q_PART_ALPHANUM}}` is the extracted alphanumeric question identifier (e.g., "27c"). Insert for sub-questions requiring a drawing. `rows` is fixed at 4.                                                      |
 
 - **Placement Rules**: An input placeholder MUST be inserted for:
     - Every MCQ question (at the point where the single answer for it is expected).
@@ -161,6 +161,9 @@ def main():
     # Only show conversion button if file is uploaded and not yet processed
     if uploaded_pdf and not st.session_state.conversion_complete:
         if st.button("Start Conversion"):
+            # Define clean_filename for use in post-processing
+            clean_filename = os.path.splitext(uploaded_pdf.name)[0].replace(" ", "_")
+            
             with st.spinner("Converting PDF pages to images..." + (" (Test Mode: First Page Only)" if test_mode else "")):
                 images = pdf_to_images(uploaded_pdf, test_mode)
 
@@ -173,17 +176,33 @@ def main():
                 # Join all markdown parts initially
                 raw_markdown = "\n\n".join(all_markdown_parts)
                 
-                # Post-process to add headers for main questions
+                # Post-process to add headers for main questions and fix image filenames
                 processed_lines = []
+                current_question_number = None
+                
                 for line in raw_markdown.splitlines():
-                    # Regex to find main question lines like "Q1. #mcq", "Q23. #oeq"
-                    # It looks for Q, followed by digits, then a literal dot, then a space, then # and a tag.
-                    # It ensures no parentheses (like in Q1(a).) are present after the question number.
-                    match = re.match(r"^(Q\d+)\.\s+#\w+", line)
-                    if match:
-                        question_number_full = match.group(0) # e.g. "Q1. #mcq"
-                        question_number_part = match.group(1) # e.g. "Q1"
+                    # Track current question number for image filename correction
+                    question_match = re.match(r"^Q(\d+)(?:\([a-zA-Z0-9]+\))?\.\s*", line)
+                    if question_match:
+                        # Extract just the main question number (e.g., "5" from "Q5(a).")
+                        current_question_number = question_match.group(1)
+                    
+                    # Check if this is a main question line (without sub-parts) to add header
+                    main_question_match = re.match(r"^(Q\d+)\.\s*", line)
+                    if main_question_match and not re.search(r"Q\d+\([a-zA-Z0-9]+\)", line):
+                        question_number_part = main_question_match.group(1) # e.g. "Q1"
                         processed_lines.append(f"## {question_number_part}")
+                    
+                    # Fix image filenames to use current question number instead of page number
+                    if current_question_number and "![" in line and f"media/{clean_filename}/" in line:
+                        # Replace page number with question number in image paths
+                        # Pattern: media/{clean_filename}/PAGENUMBERi.png -> media/{clean_filename}/QUESTIONNUMBERi.png
+                        line = re.sub(
+                            rf"(media/{re.escape(clean_filename)}/)\d+([a-z]*\.png)",
+                            rf"\g<1>{current_question_number}\g<2>",
+                            line
+                        )
+                    
                     processed_lines.append(line)
                 
                 st.session_state.processed_markdown = "\n".join(processed_lines)
@@ -199,7 +218,7 @@ def main():
         st.download_button(
             label="Download Markdown File",
             data=st.session_state.processed_markdown,
-            file_name="exam_paper.md",
+            file_name=f"{os.path.splitext(uploaded_pdf.name)[0]}.md",
             mime="text"
         )
 
