@@ -50,7 +50,7 @@ if st.button("Generate Embeddings") and paper:
     response = supabase.table('pri_sci_paper')\
         .select('question', 'answer', 'question_type', 'question_number')\
         .eq('paper', paper) \
-        .not_('question_type', 'in.("MCQ","multiple_choice","image")') \
+        .not('question_type', 'in,("MCQ","multiple_choice","image")') \
         .execute()
 
     data = response.data
