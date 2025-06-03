@@ -72,6 +72,17 @@ if 'review_data' not in st.session_state:
 
 # --- Helper Functions (Copied and adapted from 4_Structure_DB_OEQ.py) ---
 
+def get_embedding(text):
+    response = client.embeddings.create(model = "test-embedding-3-small", input=test)
+    return response.data[0].embedding
+
+def retrieve_similar_cases(new_q):
+    query = f"""
+    SELECT id, question, model_anwers from pri_sci_paper ORDER BY embedding <-> '{new_q}'::vector
+    LIMIT 3:
+    """
+    return supabase.table("pri_sch_paper").execute(query).data
+
 def fetch_non_mcq_questions(supabase_client: Client, paper_code: str) -> list[dict]:
     """Fetches non-MCQ questions for a specific paper."""
     if not supabase_available or not supabase_client:
@@ -102,59 +113,6 @@ def fetch_non_mcq_questions(supabase_client: Client, paper_code: str) -> list[di
     except Exception as e:
         st.error(f"Error fetching questions for paper {paper_code}: {e}")
         return []
-
-def generate_answer_with_openai(question_data: dict) -> dict:
-    """Generate model answer for a single question using OpenAI."""
-    if not openai_available or not openai_client:
-        return {"error": "OpenAI client not available"}
-    
-    try:
-        question_text = question_data.get('question', 'N/A')
-        question_number = question_data.get('question_number', 'Unknown')
-        
-        # Simplified system prompt for answer generation
-        system_prompt = """You are a Primary School Science expert. Generate a concise and accurate model answer for the given question.
-
-Return your response as a JSON object with this format:
-{
-    "model_answer": "Your concise, scientifically accurate answer here",
-    "structured_answer": {
-        "decision": [],
-        "cause": [],
-        "effect": [],
-        "object": [],
-        "goal": "",
-        "independent_variable": "",
-        "dependent_variable": "",
-        "controlled_variable": "",
-        "answer": [],
-        "number_required": 
-    }
-}"""
-
-        user_content = f"""Question: {question_text}
-Question Number: {question_number}
-Question Type: {question_data.get('question_type', 'Unknown')}
-Marks: {question_data.get('marks', 'Not specified')}
-
-Please generate a model answer for this Primary School Science question."""
-
-        response = openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content}
-            ],
-            temperature=0.1,
-            response_format={"type": "json_object"}
-        )
-        
-        ai_response = json.loads(response.choices[0].message.content)
-        return ai_response
-        
-    except Exception as e:
-        st.error(f"Error generating answer for question {question_data.get('question_number', 'Unknown')}: {e}")
-        return {"error": str(e)}
 
 def generate_answers_batch_with_openai(questions_list: list) -> dict:
     """Generate model answers for all questions at once using OpenAI."""
