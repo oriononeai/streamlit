@@ -7,3 +7,4 @@ supabase
 openai
 PyPDF2
 PyPDFForm
+truststore
