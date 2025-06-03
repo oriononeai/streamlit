@@ -128,7 +128,7 @@ Return your response as a JSON object with this format:
         "dependent_variable": "",
         "controlled_variable": "",
         "answer": [],
-        "number_required": 1
+        "number_required": 
     }
 }"""
 
@@ -163,46 +163,44 @@ def generate_answers_batch_with_openai(questions_list: list) -> dict:
     
     try:
         # Same system prompt logic as individual processing
-        system_prompt = """You are a Primary School Science expert. Generate concise and accurate model answers for all the given questions.
-
-IMPORTANT: Consider the context between related questions (e.g., 29a, 29b, 29c) as they may build upon each other.
-
-Return your response as a JSON object with this format:
-{
-    "questions_answers": {
-        "question_number_1": {
-            "model_answer": "Your concise, scientifically accurate answer here",
-            "structured_answer": {
-                "decision": [],
-                "cause": [],
-                "effect": [],
-                "object": [],
-                "goal": "",
-                "independent_variable": "",
-                "dependent_variable": "",
-                "controlled_variable": "",
-                "answer": [],
-                "number_required": 1
-            }
-        },
-        "question_number_2": {
-            "model_answer": "Your concise, scientifically accurate answer here",
-            "structured_answer": {
-                "decision": [],
-                "cause": [],
-                "effect": [],
-                "object": [],
-                "goal": "",
-                "independent_variable": "",
-                "dependent_variable": "",
-                "controlled_variable": "",
-                "answer": [],
-                "number_required": 1
-            }
-        }
-        // ... continue for all questions
-    }
-}"""
+        system_prompt = """You are a Primary School Science expert teacher. Generate concise and accurate model answers for all the given questions.
+            IMPORTANT: Consider the context between related questions (e.g., 29a, 29b, 29c) as they may build upon each other.            
+            Return your response as a JSON object with this format:
+            {
+                "questions_answers": {
+                    "question_number_1": {
+                        "model_answer": "Your concise, scientifically accurate answer here",
+                        "structured_answer": {
+                            "decision": [],
+                            "cause": [],
+                            "effect": [],
+                            "object": [],
+                            "goal": "",
+                            "independent_variable": "",
+                            "dependent_variable": "",
+                            "controlled_variable": "",
+                            "answer": [],
+                            "number_required": 1
+                        }
+                    },
+                    "question_number_2": {
+                        "model_answer": "Your concise, scientifically accurate answer here",
+                        "structured_answer": {
+                            "decision": [],
+                            "cause": [],
+                            "effect": [],
+                            "object": [],
+                            "goal": "",
+                            "independent_variable": "",
+                            "dependent_variable": "",
+                            "controlled_variable": "",
+                            "answer": [],
+                            "number_required": 1
+                        }
+                    }
+                    // ... continue for all questions
+                }
+            }"""
 
         # Build user content with all questions using same format as individual processing
         questions_text = "Here are all the Primary School Science questions from this paper:\n\n"
@@ -214,12 +212,12 @@ Return your response as a JSON object with this format:
             marks = question_data.get('marks', 'Not specified')
             
             questions_text += f"""Question {i}:
-Question Number: {question_number}
-Question Type: {question_type}
-Marks: {marks}
-Question: {question_text}
-
-"""
+            Question Number: {question_number}
+            Question Type: {question_type}
+            Marks: {marks}
+            Question: {question_text}
+            
+            """
 
         questions_text += "Please generate model answers for all these Primary School Science questions. Pay attention to any sub-questions that may be related (like 29a, 29b, 29c) and ensure your answers are consistent across related questions."
 
@@ -275,6 +273,7 @@ def check_specific_paper(supabase_client: Client, paper_code: str) -> dict:
         
     except Exception as e:
         return {"error": f"Database query failed: {e}"}
+        
 
 def main():
     st.title("Generate Model Answers from Database Questions")
@@ -286,10 +285,7 @@ def main():
         st.error("OpenAI client is not configured. Please set OPENAI_API_KEY environment variable.")
         return 
 
-    # Add refresh/debug controls in sidebar
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("🔧 Debug Controls")
-    
+      
     # Add refresh button
     if st.sidebar.button("🔄 Refresh Paper List"):
         # Clear any potential caches - use correct Streamlit method
@@ -301,80 +297,8 @@ def main():
             st.cache_resource.clear()
         except:
             pass
-        st.rerun()
-    
-    # Test connection button
-    if st.sidebar.button("🔗 Test Database Connection"):
-        try:
-            # Simple test query
-            test_response = supabase.table(TARGET_TABLE).select("count", count="exact").execute()
-            st.sidebar.success(f"✅ Connection successful! Table has {test_response.count} total rows.")
-        except Exception as e:
-            st.sidebar.error(f"❌ Connection test failed: {e}")
-    
-    # Show current environment details
-    st.sidebar.write(f"**Current Environment:** {selected_env}")
-    st.sidebar.write(f"**Table:** {TARGET_TABLE}")
-    st.sidebar.write(f"**Supabase URL:** {SUPABASE_URL[:50]}..." if SUPABASE_URL else "Not set")
-    
-    # Raw data viewer for debugging
-    if st.sidebar.checkbox("📋 Show Raw Database Data (Debug)"):
-        try:
-            # Fetch recent entries to see what's actually in the DB
-            debug_response = supabase.table(TARGET_TABLE).select("paper, question_number, question_type, created_at").order("created_at", desc=True).limit(20).execute()
-            if debug_response.data:
-                st.sidebar.write("**Recent 20 entries:**")
-                debug_df = pd.DataFrame(debug_response.data)
-                st.sidebar.dataframe(debug_df, height=300)
-            else:
-                st.sidebar.warning("No data found in table")
-        except Exception as e:
-            st.sidebar.error(f"Failed to fetch debug data: {e}")
-
-    # Specific paper search for debugging
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("🔍 Specific Paper Search")
-    
-    # Check for the specific paper the user is looking for
-    if st.sidebar.button("🔎 Check for P62024NHPSPL"):
-        paper_result = check_specific_paper(supabase, "P62024NHPSPL")
-        
-        if "error" in paper_result:
-            st.sidebar.error(f"❌ Error: {paper_result['error']}")
-        else:
-            st.sidebar.write(f"**Paper:** {paper_result['paper_code']}")
-            st.sidebar.write(f"**Exists:** {'✅ YES' if paper_result['exists'] else '❌ NO'}")
-            st.sidebar.write(f"**Total Rows:** {paper_result['total_rows']}")
-            
-            if paper_result['exists']:
-                st.sidebar.write(f"**Non-MCQ Questions:** {paper_result.get('non_mcq_count', 0)}")
-                st.sidebar.write(f"**Question Types:**")
-                for qtype, count in paper_result.get('question_types', {}).items():
-                    st.sidebar.write(f"  - {qtype}: {count}")
-                
-                if paper_result.get('data'):
-                    st.sidebar.write("**Sample Data (First 5 rows):**")
-                    sample_df = pd.DataFrame(paper_result['data'])
-                    st.sidebar.dataframe(sample_df[['paper', 'question_number', 'question_type']], height=200)
-    
-    # Custom paper search
-    custom_paper = st.sidebar.text_input("Enter paper code to search:", placeholder="e.g., P62024NHPSPL")
-    if st.sidebar.button("🔎 Search Custom Paper") and custom_paper:
-        paper_result = check_specific_paper(supabase, custom_paper)
-        
-        if "error" in paper_result:
-            st.sidebar.error(f"❌ Error: {paper_result['error']}")
-        else:
-            st.sidebar.write(f"**Paper:** {paper_result['paper_code']}")
-            st.sidebar.write(f"**Exists:** {'✅ YES' if paper_result['exists'] else '❌ NO'}")
-            st.sidebar.write(f"**Total Rows:** {paper_result['total_rows']}")
-            
-            if paper_result['exists']:
-                st.sidebar.write(f"**Non-MCQ Questions:** {paper_result.get('non_mcq_count', 0)}")
-                st.sidebar.write(f"**Question Types:**")
-                for qtype, count in paper_result.get('question_types', {}).items():
-                    st.sidebar.write(f"  - {qtype}: {count}")
-
+        st.rerun()    
+  
     # Paper Code Input Section
     st.subheader("Enter Paper Code")
     
