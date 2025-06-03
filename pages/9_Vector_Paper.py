@@ -50,10 +50,13 @@ if st.button("Generate Embeddings") and paper:
     response = supabase.table('pri_sci_paper')\
         .select('question', 'answer', 'question_type', 'question_number')\
         .eq('paper', paper) \
-        .not_('question_type', {'in': ['MCQ', 'multiple_choice', 'image']})\
         .execute()
 
     data = response.data
+
+    # Manual filtering
+    excluded_types = {'MCQ', 'multiple_choice', 'image'}
+    filtered_data = [row for row in data if row['question_type'] not in excluded_types]
 
     # Function to generate embeddings
 
@@ -77,7 +80,7 @@ if st.button("Generate Embeddings") and paper:
         return response.data[0].embedding
 
     # Iterate over the data and generate embeddings
-    for row in data:
+    for row in filtered_data:
         text = f"Question: {row['question']}\nAnswer: {row['answer']}"
         embedding = generate_embeddings(text)
         supabase.table(TARGET_TABLE)\
