@@ -48,7 +48,7 @@ paper = st.text_input("Enter the paper parameter:")
 if st.button("Generate Embeddings") and paper:
     # Fetch data from the table
     response = supabase.table('pri_sci_paper')\
-        .select('question', 'answer', 'question_number')\
+        .select('question', 'answer', 'question_type', 'question_number')\
         .eq('paper', paper) \
         .not_('question_type', 'in.("MCQ","multiple_choice","image")') \
         .execute()
