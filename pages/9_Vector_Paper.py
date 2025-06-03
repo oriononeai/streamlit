@@ -48,7 +48,7 @@ paper = st.text_input("Enter the paper parameter:")
 if st.button("Generate Embeddings") and paper:
     # Fetch data from the table
     response = supabase.table('pri_sci_paper')\
-        .select('question', 'answer', 'question_type', 'question_number')\
+        .select('paper','question', 'answer', 'question_type', 'question_number')\
         .eq('paper', paper) \
         .execute()
 
