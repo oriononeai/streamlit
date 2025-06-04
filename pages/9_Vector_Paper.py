@@ -57,6 +57,18 @@ if st.button("Generate Embeddings") and paper:
     # Manual filtering
     excluded_types = {'MCQ', 'multiple_choice', 'image'}
     filtered_data = [row for row in data if row['question_type'] not in excluded_types]
+    
+    # Show preview of questions to be processed
+    if filtered_data:
+        st.info(f"Found {len(filtered_data)} non-MCQ questions to process:")
+        st.write("**Questions that will be embedded:**")
+        for i, row in enumerate(filtered_data[:5]):  # Show first 5 as preview
+            st.write(f"- {row['question_number']}: {row['question'][:100]}...")
+        if len(filtered_data) > 5:
+            st.write(f"... and {len(filtered_data) - 5} more questions")
+    else:
+        st.warning("No suitable questions found for embedding.")
+        st.stop()
 
     # Function to generate embeddings
 
@@ -75,18 +87,69 @@ if st.button("Generate Embeddings") and paper:
     def generate_embeddings(text: str):
         if not openai_available:
             raise RuntimeError("OpenAI client is not available.")
-
-        response = openai_client.embeddings.create(input = [text], model = "text-embedding-ada-002")
-        return response.data[0].embedding
+        
+        try:
+            response = openai_client.embeddings.create(
+                input=[text], 
+                model="text-embedding-3-small"
+            )
+            return response.data[0].embedding
+        except Exception as e:
+            st.error(f"Error generating embedding for text: {e}")
+            raise
 
     # Iterate over the data and generate embeddings
-    for row in filtered_data:
-        text = f"Question: {row['question']}\nAnswer: {row['answer']}"
-        embedding = generate_embeddings(text)
-        supabase.table(TARGET_TABLE)\
-            .update({'vsearch': embedding})\
-            .eq('question_number', row['question_number']) \
-            .eq('paper', row['paper']) \
-                    .execute()
-
-    st.success("Embeddings generated and saved successfully.")
+    total_rows = len(filtered_data)
+    st.info(f"Starting to generate embeddings for {total_rows} questions...")
+    
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    success_count = 0
+    error_count = 0
+    
+    for i, row in enumerate(filtered_data):
+        try:
+            # Update progress
+            progress = (i + 1) / total_rows
+            progress_bar.progress(progress)
+            status_text.text(f"Processing question {i + 1}/{total_rows}: {row['question_number']}")
+            
+            # Only embed the question text (not the answer)
+            text = row['question']
+            
+            # Skip if question is empty
+            if not text or text.strip() == "":
+                st.warning(f"Skipping empty question: {row['question_number']}")
+                error_count += 1
+                continue
+                
+            embedding = generate_embeddings(text)
+            
+            # Update the database
+            result = supabase.table(TARGET_TABLE)\
+                .update({'vsearch': embedding})\
+                .eq('question_number', row['question_number']) \
+                .eq('paper', row['paper']) \
+                .execute()
+            
+            if result.data:
+                success_count += 1
+            else:
+                st.warning(f"No rows updated for question {row['question_number']}")
+                error_count += 1
+                
+        except Exception as e:
+            st.error(f"Error processing question {row['question_number']}: {e}")
+            error_count += 1
+            continue
+    
+    # Final status
+    progress_bar.progress(1.0)
+    status_text.text("Processing complete!")
+    
+    if success_count > 0:
+        st.success(f"✅ Successfully processed {success_count} questions")
+    if error_count > 0:
+        st.warning(f"⚠️ {error_count} questions had errors")
+    
+    st.success("Embedding generation process completed.")
