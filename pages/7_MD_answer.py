@@ -221,6 +221,7 @@ def build_ui_and_collect_metadata_revamped(md_content, md_file_dir, paper_no):
     if current_md_block_lines_for_processing:
         render_markdown_with_st_image(current_md_block_lines_for_processing, md_file_dir)
 
+
 def main():
     st.title("Markdown Exam Answer Tool (Revamped)")
 
@@ -235,89 +236,78 @@ def main():
     bucket_name = "markdown"
     response = supabase.storage.from_(bucket_name).list(path=folder_name)
 
-    # Step 4: Extract file names
+    # Step 4: Extract file names and let user select
     if response:
         file_names = [file['name'] for file in response if file['name'].endswith('.md')]
-        selected_file = st.selectbox("Select a Markdown File", file_names)
+        if file_names:
+            selected_file = st.selectbox("Select a Markdown File", file_names)
+
+            if selected_file:
+                # Full path to the file in the bucket
+                file_path = f"{folder_name}/{selected_file}"
+
+                # Download the file content
+                file_response = supabase.storage.from_(bucket_name).download(file_path)
+
+                # Decode and process the content
+                if file_response:
+                    markdown_content = file_response.decode("utf-8")
+
+                    # Extract paper_no from filename, remove .md extension
+                    paper_no = os.path.splitext(selected_file)[0]
+
+                    # md_file_dir for relative image paths
+                    md_file_dir = "."
+
+                    # Process the markdown content and build UI
+                    build_ui_and_collect_metadata_revamped(markdown_content, md_file_dir, paper_no)
+
+                    if st.button("Save Answers"):
+                        data_for_df = []
+                        if not st.session_state.input_fields_metadata:
+                            st.warning("No input fields were processed to save.")
+                        for field_meta in st.session_state.input_fields_metadata:
+                            answer = st.session_state.get(field_meta['widget_key'], "")
+                            level = field_meta['paper_no'][:2] if field_meta['paper_no'] else None
+
+                            raw_question = field_meta['question_df']
+                            cleaned_lines = []
+                            for line in raw_question.splitlines():
+                                # 1. Remove header lines like '## Qxx'
+                                if re.match(r"^##\s*Q\d+", line.strip()):
+                                    continue  # Skip this line
+                                # 2. Remove '#tag' from question lines
+                                cleaned_line = re.sub(r'\s*#\w+', '', line)
+                                cleaned_lines.append(cleaned_line)
+                            cleaned_question = "\n".join(cleaned_lines).strip()
+
+                            data_for_df.append({
+                                "level": level,
+                                "paper": field_meta['paper_no'],
+                                "question_number": field_meta['question_number_df'],
+                                "question": cleaned_question,
+                                "answer": answer,
+                                "marks": field_meta['marks_df'],
+                                "question_type": field_meta['question_type_df']
+                            })
+                        if data_for_df:
+                            column_order = ["level", "paper", "question_number", "question", "answer", "marks",
+                                            "question_type"]
+                            df = pd.DataFrame(data_for_df)
+                            df = df.reindex(columns=column_order)
+                            st.session_state.extracted_data = df
+                            st.success("Answers extracted successfully!")
+                            st.dataframe(st.session_state.extracted_data)
+                        elif st.session_state.input_fields_metadata:
+                            st.info("Answers saved (all were empty).")
+                            st.session_state.extracted_data = pd.DataFrame(data_for_df)
+                            st.dataframe(st.session_state.extracted_data)
+                else:
+                    st.error("Failed to download the selected file.")
+        else:
+            st.warning("No .md files found in the selected folder.")
     else:
-        st.warning("No files found in the selected folder.")
-        selected_file = None
-
-    # Full path to the file in the bucket
-    file_path = f"{folder_name}/{selected_file}"
-
-    # Download the file content
-    file_response = supabase.storage.from_(bucket_name).download(file_path)
-
-    # Decode the content (assuming it's UTF-8 encoded Markdown)
-    if file_response:
-        markdown_content = file_response.decode("utf-8")
-        st.markdown(markdown_content)
-    else:
-        st.error("Failed to download the selected file.")
-
-    uploaded_md_file = markdown_content
-
-    if uploaded_md_file is not None:
-        md_content = uploaded_md_file.getvalue()
-        
-        # Extract paper_no from filename, remove .md extension
-        paper_name_full = uploaded_md_file.name
-        paper_no = os.path.splitext(paper_name_full)[0]
-
-        # md_file_dir will be used for relative image paths if any
-        # For uploaded files, there isn't a true "directory" unless it's a zip
-        # Using "." means it assumes images (e.g., in a 'media' folder) are relative to CWD of Streamlit app
-        md_file_dir = "." 
-
-        build_ui_and_collect_metadata_revamped(md_content, md_file_dir, paper_no)
-
-        if st.button("Save Answers"):
-            data_for_df = []
-            if not st.session_state.input_fields_metadata:
-                st.warning("No input fields were processed to save.")
-            for field_meta in st.session_state.input_fields_metadata:
-                answer = st.session_state.get(field_meta['widget_key'], "")
-                level = field_meta['paper_no'][:2] if field_meta['paper_no'] else None
-                
-                raw_question = field_meta['question_df']
-                cleaned_lines = []
-                for line in raw_question.splitlines():
-                    # 1. Remove header lines like '## Qxx'
-                    if re.match(r"^##\s*Q\d+", line.strip()):
-                        continue # Skip this line
-                    # 2. Remove '#tag' from question lines
-                    cleaned_line = re.sub(r'\s*#\w+', '', line)
-                    cleaned_lines.append(cleaned_line)
-                cleaned_question = "\n".join(cleaned_lines).strip() # .strip() to remove leading/trailing newlines from overall block
-
-                data_for_df.append({
-                    "level": level,
-                    "paper": field_meta['paper_no'],
-                    "question_number": field_meta['question_number_df'],
-                    "question": cleaned_question, # Use cleaned text 
-                    "answer": answer,
-                    "marks": field_meta['marks_df'],
-                    "question_type": field_meta['question_type_df']
-                })
-            if data_for_df:
-                # Define column order for consistency
-                column_order = ["level", "paper", "question_number", "question", "answer", "marks", "question_type"]
-                df = pd.DataFrame(data_for_df)
-                # Reorder columns if not all columns are present (e.g. if some are None like marks initially)
-                # This ensures that if a column is all None, it still appears if specified in column_order
-                df = df.reindex(columns=column_order)
-                st.session_state.extracted_data = df
-                st.success("Answers extracted successfully!")
-                st.dataframe(st.session_state.extracted_data)
-            elif st.session_state.input_fields_metadata: # If metadata exists but no data_for_df (e.g. all answers empty)
-                st.info("Answers saved (all were empty).") 
-                st.session_state.extracted_data = pd.DataFrame(data_for_df) # Show empty DF
-                st.dataframe(st.session_state.extracted_data)
-            # else: (No metadata and no data_for_df) - handled by the first warning
-
-    else:
-        st.info("Please upload a Markdown file to begin.")
+        st.warning("No files found in the selected folder or failed to connect to storage.")
 
 if __name__ == "__main__":
     main() 
