@@ -224,7 +224,39 @@ def build_ui_and_collect_metadata_revamped(md_content, md_file_dir, paper_no):
 def main():
     st.title("Markdown Exam Answer Tool (Revamped)")
 
-    uploaded_md_file = st.file_uploader("Upload your Markdown Exam File", type=["md"])
+    # Step 1: Select Level and Year
+    level = st.selectbox("Select Level", ["P3", "P4", "P5", "P6"])
+    year = st.selectbox("Select Year", [str(y) for y in range(2020, 2026)])
+
+    # Step 2: Concatenate to form folder name
+    folder_name = f"{level}{year}"
+
+    # Step 3: Retrieve files from Supabase storage
+    bucket_name = "markdown"
+    response = supabase.storage.from_(bucket_name).list(path=folder_name)
+
+    # Step 4: Extract file names
+    if response:
+        file_names = [file['name'] for file in response if file['name'].endswith('.md')]
+        selected_file = st.selectbox("Select a Markdown File", file_names)
+    else:
+        st.warning("No files found in the selected folder.")
+        selected_file = None
+
+    # Full path to the file in the bucket
+    file_path = f"{folder_name}/{selected_file}"
+
+    # Download the file content
+    file_response = supabase.storage.from_(bucket_name).download(file_path)
+
+    # Decode the content (assuming it's UTF-8 encoded Markdown)
+    if file_response:
+        markdown_content = file_response.decode("utf-8")
+        st.markdown(markdown_content)
+    else:
+        st.error("Failed to download the selected file.")
+
+    uploaded_md_file = markdown_content
 
     if uploaded_md_file is not None:
         md_content = uploaded_md_file.getvalue().decode("utf-8")
