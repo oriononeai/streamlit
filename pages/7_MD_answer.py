@@ -113,10 +113,18 @@ def render_markdown_with_st_image(markdown_lines, supabase_client, bucket_name, 
             alt_text = match.group(1)
             image_path = match.group(2)  # e.g., "media/P62024ASCJPL/1i.png"
 
+            # Split the path at the first slash
+            parts = image_path.split('/', 1)
+            
+            if len(parts) == 2:
+                bucket = parts[0]      # 'media'
+                download_path = parts[1]  # 'P62024ASCJPL/1i.png'                
+                
+
             # Fetch image from Supabase storage
             try:
-                # The image_path already includes the full path from bucket root
-                image_response = supabase_client.storage.from_("root").download(image_path)
+                # Now you can use these variables in your Supabase client
+                image_response = supabase_client.storage.from_(bucket).download(download_path)
 
                 if image_response:
                     # Display image using st.image with the binary data
