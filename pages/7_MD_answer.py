@@ -89,12 +89,12 @@ def extract_marks(text_block):
         return int(matches[-1]) # Return the last one found as an integer
     return None # Or 0, or other default if no marks found
 
-def render_markdown_with_st_image(markdown_lines, md_file_dir):
-    """Renders markdown lines, intercepting image tags to use st.image."""
+
+def render_markdown_with_st_image(markdown_lines, supabase_client, bucket_name, base_folder):
+    """Renders markdown lines, intercepting image tags to fetch from Supabase storage."""
     # Regex to find Markdown image tags: !\[alt_text\](image_path)
-    # It captures: 1=alt_text, 2=image_path
     img_tag_re = re.compile(r'!\[(.*?)\]\((.*?)\)')
-    
+
     current_text_segment = []
 
     for line in markdown_lines:
@@ -103,41 +103,48 @@ def render_markdown_with_st_image(markdown_lines, md_file_dir):
         for match in img_tag_re.finditer(line):
             match_found_on_line = True
             start, end = match.span()
-            
+
             # Add text before the image tag to the current segment
             current_text_segment.append(line[last_idx:start])
             if current_text_segment:
-                st.markdown("\n".join(current_text_segment), unsafe_allow_html=False) # Keep unsafe_allow_html=False for now
+                st.markdown("\n".join(current_text_segment), unsafe_allow_html=False)
                 current_text_segment = []
-            
-            alt_text = match.group(1)
-            image_path = match.group(2)
-            
-            # Attempt to display image using st.image - paths should be like "media/folder/img.png"
-            # md_file_dir is CWD (".") in our case
-            full_image_path_for_st_image = os.path.join(md_file_dir, image_path)
 
-            if os.path.exists(full_image_path_for_st_image):
-                st.image(full_image_path_for_st_image, caption=alt_text if alt_text else None)
-            else:
-                st.warning(f"Image not found by st.image: {full_image_path_for_st_image}. Original path: {image_path}")
-                # Fallback: render the original markdown tag if st.image can't find it, hoping browser might
+            alt_text = match.group(1)
+            image_path = match.group(2)  # e.g., "media/P62024ASCJPL/1i.png"
+
+            # Fetch image from Supabase storage
+            try:
+                # The image_path already includes the full path from bucket root
+                image_response = supabase_client.storage.from_(bucket_name).download(image_path)
+
+                if image_response:
+                    # Display image using st.image with the binary data
+                    st.image(image_response, caption=alt_text if alt_text else None)
+                else:
+                    st.warning(f"Image not found in storage: {image_path}")
+                    # Fallback: render the original markdown tag
+                    st.markdown(match.group(0), unsafe_allow_html=False)
+
+            except Exception as e:
+                st.warning(f"Error fetching image {image_path}: {str(e)}")
+                # Fallback: render the original markdown tag
                 st.markdown(match.group(0), unsafe_allow_html=False)
 
             last_idx = end
-        
+
         # Add any remaining text after the last image tag (or the whole line if no image)
         if match_found_on_line:
             current_text_segment.append(line[last_idx:])
         else:
             current_text_segment.append(line)
-            
+
     # Render any final text segment
     if current_text_segment:
         st.markdown("\n".join(current_text_segment), unsafe_allow_html=False)
 
-def build_ui_and_collect_metadata_revamped(md_content, md_file_dir, paper_no):
-    st.session_state.input_fields_metadata = [] 
+def build_ui_and_collect_metadata_revamped(md_content, supabase_client, bucket_name, base_folder, paper_no):
+    st.session_state.input_fields_metadata = []
     all_lines = md_content.splitlines()
     current_md_block_lines_for_processing = []
 
@@ -156,10 +163,11 @@ def build_ui_and_collect_metadata_revamped(md_content, md_file_dir, paper_no):
             question_for_df = ""
             if current_md_block_lines_for_processing:
                 question_for_df = "\n".join(current_md_block_lines_for_processing)
-                render_markdown_with_st_image(current_md_block_lines_for_processing, md_file_dir)
-                current_md_block_lines_for_processing = [] 
+                render_markdown_with_st_image(current_md_block_lines_for_processing, supabase_client, bucket_name,
+                                              base_folder)
+                current_md_block_lines_for_processing = []
 
-            # 2. Process and render the placeholder as a Streamlit widget
+                # Process and render the placeholder as a Streamlit widget
             q_num_attr = attrs['question_number']
             placeholder_type_from_attr = attrs.get('type', 'text')
             marks_for_df = extract_marks(question_for_df)
@@ -169,57 +177,54 @@ def build_ui_and_collect_metadata_revamped(md_content, md_file_dir, paper_no):
             st.session_state.input_fields_metadata.append({
                 'widget_key': widget_key,
                 'paper_no': paper_no,
-                'question_number_df': q_num_attr, 
+                'question_number_df': q_num_attr,
                 'question_df': question_for_df,
                 'marks_df': marks_for_df,
                 'question_type_df': "",
                 'attrs': attrs
             })
-            
+
             # Provide a label for the input widget for clarity
             input_label = f"{q_num_attr}:"
-            
+
             # Fetch existing answer from Supabase
             existing_answer = fetch_answer_from_supabase(paper_no, q_num_attr)
 
             if placeholder_type_from_attr == "text":
                 st.text_input(input_label, key=widget_key, value=existing_answer, label_visibility="visible")
             elif placeholder_type_from_attr == "textarea":
-                rows = int(attrs.get('rows', 3)) # Default to 3 rows
-                # Ensure minimum rows for height calculation if multiplier is 25
-                # 68/25 = 2.72, so effectively need at least 3 rows
-                actual_rows_for_height = max(3, rows) 
-                st.text_area(input_label, key=widget_key, height=actual_rows_for_height * 25, value=existing_answer, label_visibility="visible")
-            elif placeholder_type_from_attr == "canvas": # For canvas, we show original image if src, then textarea
+                rows = int(attrs.get('rows', 3))
+                actual_rows_for_height = max(3, rows)
+                st.text_area(input_label, key=widget_key, height=actual_rows_for_height * 25, value=existing_answer,
+                             label_visibility="visible")
+            elif placeholder_type_from_attr == "canvas":
                 if 'src' in attrs:
-                    img_src_path = attrs['src']
-                    # Image path resolution: try relative to md_file_dir, then CWD for media folder
-                    full_img_path = os.path.join(md_file_dir, img_src_path) 
-                    if os.path.exists(full_img_path):
-                        st.image(full_img_path)
-                    else:
-                        # Fallback for common "media" folder relative to app CWD
-                        alt_img_path = os.path.join(".", img_src_path) 
-                        if os.path.exists(alt_img_path) and alt_img_path != full_img_path:
-                            st.image(alt_img_path)
+                    img_src_path = attrs['src']  # e.g., "media/P62024ASCJPL/1i.png"
+
+                    # Fetch image from Supabase storage
+                    try:
+                        image_response = supabase_client.storage.from_(bucket_name).download(img_src_path)
+                        if image_response:
+                            st.image(image_response)
                         else:
-                            st.warning(f"Canvas src image not found: {full_img_path}")
-                rows = int(attrs.get('rows', 4)) # Default to 4 rows for canvas's textarea
-                # Ensure minimum rows for height calculation
-                actual_rows_for_height = max(3, rows) # Canvas text area also needs min 3 rows based on 68px/25px
-                st.text_area(f"{q_num_attr}: (drawing/description)", key=widget_key, height=actual_rows_for_height * 25, value=existing_answer, label_visibility="visible")
+                            st.warning(f"Canvas src image not found in storage: {img_src_path}")
+                    except Exception as e:
+                        st.warning(f"Error fetching canvas image {img_src_path}: {str(e)}")
+
+                rows = int(attrs.get('rows', 4))
+                actual_rows_for_height = max(3, rows)
+                st.text_area(f"{q_num_attr}: (drawing/description)", key=widget_key, height=actual_rows_for_height * 25,
+                             value=existing_answer, label_visibility="visible")
             else:
-                # If unknown, render the original placeholder line as Markdown text for visibility
                 st.markdown(f"**Unknown placeholder type found:** `{line_text}`")
-                # Also add it to current_md_block_lines_for_processing so it's not lost if it was a parsing mistake
                 current_md_block_lines_for_processing.append(line_text)
-        
-        else: # Not a placeholder line
+
+        else:
             current_md_block_lines_for_processing.append(line_text)
 
     # Render any remaining Markdown content at the end of the file
     if current_md_block_lines_for_processing:
-        render_markdown_with_st_image(current_md_block_lines_for_processing, md_file_dir)
+        render_markdown_with_st_image(current_md_block_lines_for_processing, supabase_client, bucket_name, base_folder)
 
 
 def main():
@@ -234,6 +239,11 @@ def main():
 
     # Step 3: Retrieve files from Supabase storage
     bucket_name = "markdown"
+
+    if not supabase_available:
+        st.error("Supabase connection not available. Cannot proceed.")
+        return
+
     response = supabase.storage.from_(bucket_name).list(path=folder_name)
 
     # Step 4: Extract file names and let user select
@@ -247,63 +257,70 @@ def main():
                 file_path = f"{folder_name}/{selected_file}"
 
                 # Download the file content
-                file_response = supabase.storage.from_(bucket_name).download(file_path)
+                try:
+                    file_response = supabase.storage.from_(bucket_name).download(file_path)
 
-                # Decode and process the content
-                if file_response:
-                    markdown_content = file_response.decode("utf-8")
+                    if file_response:
+                        markdown_content = file_response.decode("utf-8")
 
-                    # Extract paper_no from filename, remove .md extension
-                    paper_no = os.path.splitext(selected_file)[0]
+                        # Extract paper_no from filename, remove .md extension
+                        paper_no = os.path.splitext(selected_file)[0]
 
-                    # md_file_dir for relative image paths
-                    md_file_dir = "."
+                        # Process the markdown content and build UI
+                        # Pass supabase client and bucket info for image fetching
+                        build_ui_and_collect_metadata_revamped(
+                            markdown_content,
+                            supabase,
+                            bucket_name,
+                            folder_name,
+                            paper_no
+                        )
 
-                    # Process the markdown content and build UI
-                    build_ui_and_collect_metadata_revamped(markdown_content, md_file_dir, paper_no)
+                        if st.button("Save Answers"):
+                            data_for_df = []
+                            if not st.session_state.input_fields_metadata:
+                                st.warning("No input fields were processed to save.")
 
-                    if st.button("Save Answers"):
-                        data_for_df = []
-                        if not st.session_state.input_fields_metadata:
-                            st.warning("No input fields were processed to save.")
-                        for field_meta in st.session_state.input_fields_metadata:
-                            answer = st.session_state.get(field_meta['widget_key'], "")
-                            level = field_meta['paper_no'][:2] if field_meta['paper_no'] else None
+                            for field_meta in st.session_state.input_fields_metadata:
+                                answer = st.session_state.get(field_meta['widget_key'], "")
+                                level_extracted = field_meta['paper_no'][:2] if field_meta['paper_no'] else None
 
-                            raw_question = field_meta['question_df']
-                            cleaned_lines = []
-                            for line in raw_question.splitlines():
-                                # 1. Remove header lines like '## Qxx'
-                                if re.match(r"^##\s*Q\d+", line.strip()):
-                                    continue  # Skip this line
-                                # 2. Remove '#tag' from question lines
-                                cleaned_line = re.sub(r'\s*#\w+', '', line)
-                                cleaned_lines.append(cleaned_line)
-                            cleaned_question = "\n".join(cleaned_lines).strip()
+                                raw_question = field_meta['question_df']
+                                cleaned_lines = []
+                                for line in raw_question.splitlines():
+                                    if re.match(r"^##\s*Q\d+", line.strip()):
+                                        continue
+                                    cleaned_line = re.sub(r'\s*#\w+', '', line)
+                                    cleaned_lines.append(cleaned_line)
+                                cleaned_question = "\n".join(cleaned_lines).strip()
 
-                            data_for_df.append({
-                                "level": level,
-                                "paper": field_meta['paper_no'],
-                                "question_number": field_meta['question_number_df'],
-                                "question": cleaned_question,
-                                "answer": answer,
-                                "marks": field_meta['marks_df'],
-                                "question_type": field_meta['question_type_df']
-                            })
-                        if data_for_df:
-                            column_order = ["level", "paper", "question_number", "question", "answer", "marks",
-                                            "question_type"]
-                            df = pd.DataFrame(data_for_df)
-                            df = df.reindex(columns=column_order)
-                            st.session_state.extracted_data = df
-                            st.success("Answers extracted successfully!")
-                            st.dataframe(st.session_state.extracted_data)
-                        elif st.session_state.input_fields_metadata:
-                            st.info("Answers saved (all were empty).")
-                            st.session_state.extracted_data = pd.DataFrame(data_for_df)
-                            st.dataframe(st.session_state.extracted_data)
-                else:
-                    st.error("Failed to download the selected file.")
+                                data_for_df.append({
+                                    "level": level_extracted,
+                                    "paper": field_meta['paper_no'],
+                                    "question_number": field_meta['question_number_df'],
+                                    "question": cleaned_question,
+                                    "answer": answer,
+                                    "marks": field_meta['marks_df'],
+                                    "question_type": field_meta['question_type_df']
+                                })
+
+                            if data_for_df:
+                                column_order = ["level", "paper", "question_number", "question", "answer", "marks",
+                                                "question_type"]
+                                df = pd.DataFrame(data_for_df)
+                                df = df.reindex(columns=column_order)
+                                st.session_state.extracted_data = df
+                                st.success("Answers extracted successfully!")
+                                st.dataframe(st.session_state.extracted_data)
+                            elif st.session_state.input_fields_metadata:
+                                st.info("Answers saved (all were empty).")
+                                st.session_state.extracted_data = pd.DataFrame(data_for_df)
+                                st.dataframe(st.session_state.extracted_data)
+                    else:
+                        st.error("Failed to download the selected file.")
+
+                except Exception as e:
+                    st.error(f"Error processing file: {str(e)}")
         else:
             st.warning("No .md files found in the selected folder.")
     else:
