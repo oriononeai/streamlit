@@ -259,7 +259,7 @@ def main():
     uploaded_md_file = markdown_content
 
     if uploaded_md_file is not None:
-        md_content = uploaded_md_file.getvalue().decode("utf-8")
+        md_content = uploaded_md_file.getvalue()
         
         # Extract paper_no from filename, remove .md extension
         paper_name_full = uploaded_md_file.name
