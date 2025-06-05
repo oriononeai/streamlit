@@ -209,9 +209,17 @@ def build_ui_and_collect_metadata_revamped(md_content, supabase_client, bucket_n
                 if 'src' in attrs:
                     img_src_path = attrs['src']  # e.g., "media/P62024ASCJPL/1i.png"
 
+                    # Split the path at the first slash
+                    parts = img_src_path.split('/', 1)
+                    
+                    if len(parts) == 2:
+                        bucket = parts[0]      # 'media'
+                        download_path = parts[1]  # 'P62024ASCJPL/1i.png' 
+                        
                     # Fetch image from Supabase storage
                     try:
-                        image_response = supabase_client.storage.from_(bucket_name).download(img_src_path)
+                        # Now you can use these variables in your Supabase client
+                        image_response = supabase_client.storage.from_(bucket).download(download_path)
                         if image_response:
                             st.image(image_response)
                         else:
