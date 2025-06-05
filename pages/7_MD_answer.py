@@ -116,7 +116,7 @@ def render_markdown_with_st_image(markdown_lines, supabase_client, bucket_name, 
             # Fetch image from Supabase storage
             try:
                 # The image_path already includes the full path from bucket root
-                image_response = supabase_client.storage.from_().download(image_path)
+                image_response = supabase_client.storage.from_("root").download(image_path)
 
                 if image_response:
                     # Display image using st.image with the binary data
