@@ -213,6 +213,10 @@ Model Answer: Humidity | Wind speed | Cloud cover | Amount of sunlight | Rainfal
     "number_required": 2
   }
 }
+
+If a raw model answer is given, it is compulsory to response with a clean JSON structure with the correct format with relevant answers. A json structure without any relevant answers is not allowed.
+
+Now, start to give model answers a json structure for marking.
 """
 
 def structure_answer_with_openai(paper: str, qn: str, question: str, q_type: str, answer: str) -> str | None:
