@@ -169,7 +169,7 @@ Inside the `model_answer` object, include all applicable fields below:
 | `controlled_variable` | A string representing what is kept constant in the experiment. |
 | `dependent_variable` | A string representing what is measured or observed. |
 | `answer` | List of direct answers (for fact recall). If multiple options separated by `|`, split into a list. |
-| `number_required` | Integer. Set only if the provided Question Text clearly asks for naming two, three, etc. If not mentioned, omit this field. |
+| `number_required` | Integer. Depends on the number of answers based on the question asked, for example "name 2 fruits that are juicy", return "2". |
 
 ---
 
@@ -180,8 +180,7 @@ Inside the `model_answer` object, include all applicable fields below:
 - If a sub-field within `model_answer` is not applicable for the question type, leave it as:
   - `[]` for lists (decision, cause, effect, object, answer),
   - `""` for strings (goal, independent_variable, controlled_variable, dependent_variable).
-- `number_required` must be manually interpreted based on the provided full question text if it mentions "two", "three", etc.
-# - Always set `marks_allocated` to `null`. (No longer needed as it's not an output field)
+- `number_required` must be interpreted based on the provided full question text if it mentions "two", "three". If number of answers is not explicitly mentionen, then return a value of 1.
 
 ---
 
